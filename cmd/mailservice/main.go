@@ -19,6 +19,7 @@ import (
 	"github.com/shamil3ilm/mail-service/internal/api"
 	"github.com/shamil3ilm/mail-service/internal/auth"
 	"github.com/shamil3ilm/mail-service/internal/config"
+	"github.com/shamil3ilm/mail-service/internal/dnspub"
 	"github.com/shamil3ilm/mail-service/internal/events"
 	"github.com/shamil3ilm/mail-service/internal/logger"
 	"github.com/shamil3ilm/mail-service/internal/provider"
@@ -97,6 +98,14 @@ func run() error {
 		go runSelfChecks(ctx, cfg, store, log)
 	}
 
+	// DNS publisher — auto-publish generated records into an authoritative
+	// DNS backend when configured. Defaults to manual (no-op) so existing
+	// deployments are unchanged.
+	publisher := buildPublisher(cfg, log)
+	log.Info("dns publisher configured",
+		slog.String("publisher", publisher.Name()),
+	)
+
 	// ── HTTP ─────────────────────────────────────────────────────────────
 	srv := &api.Server{
 		Store:             store,
@@ -104,6 +113,7 @@ func run() error {
 		Bus:               bus,
 		Auth:              authMgr,
 		Relay:             relay,
+		DNSPublisher:      publisher,
 		Logger:            log,
 		CloudMode:         cloudMode,
 		AutoVerifyDomains: cfg.AutoVerifyDomains,
@@ -238,6 +248,22 @@ func runSelfChecks(ctx context.Context, cfg *config.Config, store *sqlite.Store,
 		DKIMSelectors: []string{"ms1"},
 		DNSBLZones:    cfg.CloudDNSBLZones,
 	}, log)
+}
+
+// buildPublisher picks the DNS publisher based on config.
+// Empty/unknown values default to Manual so misconfig doesn't fail-close
+// on a subsystem the operator may not care about.
+func buildPublisher(cfg *config.Config, log *slog.Logger) dnspub.Publisher {
+	switch cfg.DNSPublisher {
+	case "privatedns":
+		if cfg.DNSPublisherURL == "" || cfg.DNSPublisherToken == "" {
+			log.Warn("dns publisher: 'privatedns' selected but URL or token missing — falling back to manual")
+			return dnspub.Manual{}
+		}
+		return dnspub.New(cfg.DNSPublisherURL, cfg.DNSPublisherUser, cfg.DNSPublisherToken, nil)
+	default:
+		return dnspub.Manual{}
+	}
 }
 
 // buildRelay picks the outbound provider based on config.
