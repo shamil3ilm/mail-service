@@ -1,6 +1,6 @@
 module github.com/shamil3ilm/mail-service
 
-go 1.22
+go 1.24
 
 require (
 	github.com/emersion/go-sasl v0.0.0-20200509203442-7bfe0ed36a21

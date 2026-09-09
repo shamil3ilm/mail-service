@@ -24,7 +24,7 @@ SMTP listener, dashboard SPA, and message routing land in the next phases.
 
 ## Prerequisites
 
-- Go 1.22+ — https://go.dev/dl/
+- Go 1.24+ — https://go.dev/dl/ (crypto/pbkdf2 for password hashing)
 - (optional) Docker Desktop or docker + docker-compose
 
 Install Go on Windows and verify:
