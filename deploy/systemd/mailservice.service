@@ -1,0 +1,66 @@
+# mail-service — production systemd unit.
+#
+# Install:
+#   sudo cp deploy/systemd/mailservice.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now mailservice
+#
+# Logs:
+#   journalctl -u mailservice -f
+#
+# The sandboxing directives are aggressive on purpose: this process
+# listens on public ports (25/587/443) and handles user secrets. Every
+# capability we don't need is dropped.
+
+[Unit]
+Description=mail-service — self-hosted mail platform
+Documentation=https://github.com/shamil3ilm/mail-service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mailservice
+Group=mailservice
+WorkingDirectory=/var/lib/mailservice
+EnvironmentFile=/etc/mailservice/env
+ExecStart=/usr/local/bin/mailservice
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+# Allow binding privileged ports (25, 587, 443) without running as root.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Sandbox: deny everything not explicitly needed.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Only writable path: state dir. Everything else is read-only.
+ReadWritePaths=/var/lib/mailservice
+StateDirectory=mailservice
+LogsDirectory=mailservice
+
+# Bind to public interfaces (no loopback-only restrictions).
+IPAddressAllow=any
+
+[Install]
+WantedBy=multi-user.target

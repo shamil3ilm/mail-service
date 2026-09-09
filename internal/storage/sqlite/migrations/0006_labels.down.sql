@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS message_labels;
+DROP TABLE IF EXISTS labels;

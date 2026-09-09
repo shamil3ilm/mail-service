@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS messages_fts;
+DROP TABLE IF EXISTS events;
+DROP TABLE IF EXISTS attachments;
+DROP TABLE IF EXISTS messages;
+DROP TABLE IF EXISTS mailboxes;

@@ -1,0 +1,52 @@
+# Binaries
+/mailservice
+/mailservice.exe
+/bin/
+/dist/
+
+# Go build cache
+*.test
+*.out
+coverage.*
+vendor/
+
+# Local data
+/data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Raw MIME store
+/store/
+/raw/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/logs/
+
+# Docker
+.docker-data/
+
+# Web build artifacts
+/web/node_modules/
+
+# Test artifacts (files landed in-repo during interactive dev)
+/bounce.py
+/notes.txt
+/attachments
