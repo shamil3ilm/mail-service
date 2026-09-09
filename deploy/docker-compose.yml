@@ -1,0 +1,37 @@
+# mail-service — local docker compose
+# Day 1 stack: just the app. Postfix + rspamd + redis land in Phase 5–7
+# when we add public MX and spam scoring.
+services:
+  mailservice:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-dev}
+    container_name: mailservice
+    restart: unless-stopped
+    ports:
+      - "8035:8035"   # dashboard + API
+      - "2525:2525"   # SMTP dev catch
+      - "587:587"     # SMTP submission (auth)
+    environment:
+      MAIL_MODE: local
+      MAIL_LISTEN_ADDR: 0.0.0.0
+      MAIL_LOG_LEVEL: info
+      MAIL_LOG_FORMAT: json
+      MAIL_HTTP_PORT: "8035"
+      MAIL_ADMIN_PORT: "8036"
+      MAIL_SMTP_PORT: "2525"
+      MAIL_DB_PATH: /data/mail.db
+      MAIL_RAW_STORE_PATH: /data/raw
+    volumes:
+      - mail-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8025/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mail-data:

@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>mail-service</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9C%89%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+
+<!-- ── LOGIN SCREEN ─────────────────────────────────────────────── -->
+<section id="login" class="screen hidden">
+  <form id="login-form" class="card">
+    <h1>mail-service</h1>
+    <p class="muted">Sign in to your inbox.</p>
+    <label>
+      Email
+      <input type="email" name="email" autocomplete="username" required autofocus>
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit">Sign in</button>
+    <p id="login-error" class="error hidden"></p>
+    <p class="muted small">
+      First-run password is printed to the server console.
+    </p>
+  </form>
+</section>
+
+<!-- ── DASHBOARD ────────────────────────────────────────────────── -->
+<section id="app" class="screen hidden">
+  <header class="topbar">
+    <button id="menu-toggle" aria-label="Toggle sidebar" class="icon-btn">☰</button>
+    <div class="brand">mail-service</div>
+    <div class="spacer"></div>
+    <button id="compose-btn" class="ghost-btn">✎ Compose</button>
+    <button id="settings-btn" class="ghost-btn" title="Settings">⚙</button>
+    <span id="live-dot" class="dot" title="disconnected"></span>
+    <span id="user-email" class="muted small"></span>
+    <button id="logout-btn" class="ghost-btn">Sign out</button>
+  </header>
+
+  <div class="layout">
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">Mailboxes</div>
+      <ul id="mailbox-list" class="mailbox-list"></ul>
+
+      <div class="sidebar-header">
+        <span>Labels</span>
+        <button id="new-label-btn" class="ghost-btn tiny" title="Create label">+</button>
+      </div>
+      <ul id="label-list" class="mailbox-list"></ul>
+    </aside>
+
+    <main class="main">
+      <div id="inbox" class="inbox">
+        <div class="inbox-header">
+          <input id="search-input" type="search"
+                 placeholder="Search: from:alice subject:invoice ..."
+                 autocomplete="off">
+          <button id="search-clear" class="ghost-btn hidden" title="Clear search">×</button>
+          <h2 id="inbox-title" class="hidden">All mail</h2>
+          <button id="refresh-btn" class="ghost-btn" title="Refresh">↻</button>
+        </div>
+        <ul id="message-list" class="message-list"></ul>
+        <p id="inbox-empty" class="muted center hidden">No messages yet.</p>
+      </div>
+
+      <article id="detail" class="detail hidden">
+        <button id="back-btn" class="ghost-btn mobile-only">← Back</button>
+        <header class="detail-header">
+          <h2 id="detail-subject">(no subject)</h2>
+          <div class="detail-meta">
+            <span><strong>From:</strong> <span id="detail-from"></span></span>
+            <span><strong>To:</strong> <span id="detail-to"></span></span>
+            <span><strong>Date:</strong> <span id="detail-date"></span></span>
+          </div>
+          <div class="detail-actions">
+            <button id="detail-reply" class="ghost-btn">↩ Reply</button>
+            <button id="detail-reply-all" class="ghost-btn">↩↩ Reply all</button>
+            <button id="detail-forward" class="ghost-btn">→ Forward</button>
+            <button id="detail-view-toggle" class="ghost-btn" title="Toggle rich/plain">Plain</button>
+            <button id="detail-images-toggle" class="ghost-btn hidden" title="Load blocked images">Show images</button>
+            <div id="detail-labels" class="detail-labels"></div>
+            <button id="detail-label-btn" class="ghost-btn" title="Add label">🏷</button>
+            <a id="detail-raw" class="ghost-btn" href="#" target="_blank" rel="noopener">Download .eml</a>
+            <button id="detail-delete" class="danger-btn">Delete</button>
+          </div>
+        </header>
+        <div id="thread-attach-strip" class="detail-attachments"></div>
+        <section class="detail-body">
+          <iframe id="detail-frame" title="Message body" sandbox=""></iframe>
+        </section>
+      </article>
+    </main>
+  </div>
+</section>
+
+<!-- ── SETTINGS DRAWER (API keys) ───────────────────────────────── -->
+<div id="settings" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2 id="settings-title">Settings</h2>
+      <button type="button" id="settings-close" class="icon-btn" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <section>
+        <div class="section-header">
+          <h3>API keys</h3>
+        </div>
+        <p class="muted small">
+          Use these with <code>Authorization: Bearer msk_…</code> or as the SMTP
+          submission password. The secret is shown once when created.
+        </p>
+
+        <form id="new-key-form" class="inline-form">
+          <input type="text" name="name" placeholder="Key name (e.g. ocw-app)" required>
+          <button type="submit" class="ghost-btn">+ New key</button>
+        </form>
+        <p id="new-key-error" class="error small hidden"></p>
+
+        <ul id="key-list" class="key-list"></ul>
+        <p id="key-empty" class="muted center small hidden">No keys yet.</p>
+      </section>
+
+      <section>
+        <div class="section-header">
+          <h3>Domains</h3>
+        </div>
+        <p class="muted small">
+          Add a domain you own, publish the DNS records shown, then click
+          <strong>Verify</strong>. Once green, mail from <code>@yourdomain</code>
+          is signed with DKIM and accepted by any mail provider.
+        </p>
+
+        <form id="new-domain-form" class="inline-form">
+          <input type="text" name="name" placeholder="yourdomain.com" required>
+          <button type="submit" class="ghost-btn">+ Add domain</button>
+        </form>
+        <p id="new-domain-error" class="error small hidden"></p>
+
+        <ul id="domain-list" class="domain-list"></ul>
+        <p id="domain-empty" class="muted center small hidden">No domains yet.</p>
+      </section>
+
+      <section>
+        <div class="section-header">
+          <h3>Suppressions</h3>
+        </div>
+        <p class="muted small">
+          Recipients on this list are never sent to. Populated automatically
+          from hard bounces + complaints; you can also add entries manually.
+        </p>
+
+        <form id="new-supp-form" class="inline-form">
+          <input type="email" name="address" placeholder="user@example.com" required>
+          <button type="submit" class="ghost-btn">+ Suppress</button>
+        </form>
+        <p id="new-supp-error" class="error small hidden"></p>
+
+        <ul id="supp-list" class="key-list"></ul>
+        <p id="supp-empty" class="muted center small hidden">Nothing suppressed.</p>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- Keyboard shortcuts help -->
+<div id="shortcuts-help" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>Keyboard shortcuts</h2>
+      <button type="button" id="shortcuts-close" class="icon-btn" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <table class="shortcuts">
+        <tr><td><kbd>j</kbd> / <kbd>k</kbd></td><td>Next / previous thread</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>Open selected thread</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Close open thread / modal</td></tr>
+        <tr><td><kbd>c</kbd></td><td>Compose new message</td></tr>
+        <tr><td><kbd>r</kbd></td><td>Reply</td></tr>
+        <tr><td><kbd>Shift</kbd>+<kbd>r</kbd></td><td>Reply all</td></tr>
+        <tr><td><kbd>f</kbd></td><td>Forward</td></tr>
+        <tr><td><kbd>#</kbd> or <kbd>Del</kbd></td><td>Delete thread</td></tr>
+        <tr><td><kbd>u</kbd></td><td>Back to inbox</td></tr>
+        <tr><td><kbd>/</kbd></td><td>Focus search</td></tr>
+        <tr><td><kbd>?</kbd></td><td>Show this help</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Fresh-key reveal (shown once) -->
+<div id="key-reveal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>Your new API key</h2>
+      <button type="button" id="key-reveal-close" class="icon-btn" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="muted small">
+        Copy this key <strong>now</strong>. It will not be shown again.
+      </p>
+      <pre id="key-reveal-token" class="token-block"></pre>
+      <div>
+        <button type="button" id="key-copy-btn" class="ghost-btn">Copy to clipboard</button>
+        <span id="key-copy-status" class="muted small"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── COMPOSE MODAL ────────────────────────────────────────────── -->
+<div id="compose" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="compose-title">
+  <form id="compose-form" class="modal-card">
+    <div class="modal-header">
+      <h2 id="compose-title">New message</h2>
+      <button type="button" id="compose-close" class="icon-btn" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <label>From <input name="from" type="email" required placeholder="you@example.test"></label>
+      <label>To   <input name="to"   type="text"  required placeholder="one@x.test, two@y.test"></label>
+      <label>Cc   <input name="cc"   type="text"  placeholder="optional"></label>
+      <label>Subject <input name="subject" type="text" required></label>
+      <label>Body
+        <textarea name="text" rows="8" required placeholder="Write your message…"></textarea>
+      </label>
+      <div class="attach-row">
+        <label class="attach-btn">
+          📎 Attach files
+          <input id="compose-files" type="file" multiple hidden>
+        </label>
+        <span id="compose-attach-status" class="muted small"></span>
+      </div>
+      <ul id="compose-attachments" class="attach-list"></ul>
+      <p id="compose-error" class="error hidden"></p>
+    </div>
+    <div class="modal-footer">
+      <span id="compose-status" class="muted small"></span>
+      <button type="submit" id="compose-send">Send</button>
+    </div>
+  </form>
+</div>
+
+<script src="/assets/app.js" defer></script>
+</body>
+</html>
