@@ -142,6 +142,26 @@ func (s *Server) createDomain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	records := dnsx.RecordsFor(d.Name, key, s.dnsPolicy())
+
+	// Auto-publish to the configured DNS backend if one is wired up.
+	// Best-effort: publish failures log a warning but don't fail the
+	// request — the domain row exists, the operator can retry manually.
+	if s.DNSPublisher != nil && s.DNSPublisher.Name() != "manual" {
+		if err := s.DNSPublisher.Publish(r.Context(), d.Name, records); err != nil {
+			s.Logger.Warn("dns publish",
+				slog.String("publisher", s.DNSPublisher.Name()),
+				slog.String("domain", d.Name),
+				slog.String("err", err.Error()),
+			)
+		} else {
+			s.Logger.Info("dns published",
+				slog.String("publisher", s.DNSPublisher.Name()),
+				slog.String("domain", d.Name),
+				slog.Int("records", len(records)),
+			)
+		}
+	}
+
 	writeJSON(w, http.StatusCreated, toDomainDTO(d, records, nil))
 }
 
@@ -172,7 +192,25 @@ func (s *Server) verifyDomain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	records := dnsx.RecordsFor(d.Name, keyFromDomain(d), s.dnsPolicy())
+
+	// Two-stage verification:
+	//   1. Ask the DNS publisher (privatedns) whether it has the records.
+	//      This confirms our OWN authoritative DNS is correct.
+	//   2. Fall back to a live public DNS lookup to confirm the world
+	//      actually sees the records (registrar delegation is working +
+	//      DNS caches have propagated).
+	// Merge: a record is considered verified if EITHER stage confirms it.
 	verdicts := dnsx.Verify(r.Context(), nil /* net.DefaultResolver */, records)
+	if s.DNSPublisher != nil && s.DNSPublisher.Name() != "manual" {
+		if pubVerdicts, err := s.DNSPublisher.Verify(r.Context(), d.Name, records); err == nil {
+			verdicts = mergeVerdicts(verdicts, pubVerdicts)
+		} else {
+			s.Logger.Debug("dns publisher verify",
+				slog.String("publisher", s.DNSPublisher.Name()),
+				slog.String("err", err.Error()),
+			)
+		}
+	}
 
 	now := time.Now().UTC()
 	for i, v := range verdicts {
@@ -240,4 +278,32 @@ func keyFromDomain(d *storage.Domain) *dnsx.DKIMKey {
 		PublicB64:  d.DKIMPublicKey,
 		PrivatePEM: "", // never returned
 	}
+}
+
+// mergeVerdicts combines two verdict slices (same order, same length).
+// A record is Verified when EITHER slice says so — we want the union of
+// public-DNS and publisher-side observations. Kind + Observed carry
+// through from whichever slice reported them.
+func mergeVerdicts(a, b []dnsx.Verdict) []dnsx.Verdict {
+	if len(b) == 0 {
+		return a
+	}
+	if len(a) == 0 {
+		return b
+	}
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	out := make([]dnsx.Verdict, n)
+	for i := 0; i < n; i++ {
+		out[i] = a[i]
+		if !out[i].Verified && b[i].Verified {
+			out[i].Verified = true
+			if len(out[i].Observed) == 0 {
+				out[i].Observed = b[i].Observed
+			}
+		}
+	}
+	return out
 }

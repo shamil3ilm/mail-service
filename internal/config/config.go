@@ -58,6 +58,15 @@ type Config struct {
 	CloudHostname   string
 	CloudOutboundIP string
 	CloudDNSBLZones []string
+
+	// DNS publisher: automates publishing generated SPF/DKIM/DMARC/MX
+	// records into an authoritative DNS backend (currently: privatedns).
+	// Empty defaults leave the workflow manual — records shown in the
+	// dashboard for the operator to copy-paste into their DNS provider.
+	DNSPublisher      string // "manual" | "privatedns"
+	DNSPublisherURL   string // e.g. http://127.0.0.1:8080
+	DNSPublisherUser  string // login email (when Token is a password)
+	DNSPublisherToken string // JWT | API key | password
 }
 
 type SMTPRelay struct {
@@ -102,6 +111,11 @@ func Load() (*Config, error) {
 		CloudOutboundIP: getenv("MAIL_CLOUD_OUTBOUND_IP", ""),
 		CloudDNSBLZones: splitCSV(getenv("MAIL_CLOUD_DNSBL_ZONES",
 			"zen.spamhaus.org,b.barracudacentral.org,bl.spamcop.net")),
+
+		DNSPublisher:      getenv("MAIL_DNS_PUBLISHER", "manual"),
+		DNSPublisherURL:   getenv("MAIL_DNS_PUBLISHER_URL", ""),
+		DNSPublisherUser:  getenv("MAIL_DNS_PUBLISHER_USER", "admin@local"),
+		DNSPublisherToken: getenv("MAIL_DNS_PUBLISHER_TOKEN", ""),
 	}
 
 	if err := c.validate(); err != nil {

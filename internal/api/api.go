@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/shamil3ilm/mail-service/internal/auth"
+	"github.com/shamil3ilm/mail-service/internal/dnspub"
 	"github.com/shamil3ilm/mail-service/internal/events"
 	"github.com/shamil3ilm/mail-service/internal/provider"
 	"github.com/shamil3ilm/mail-service/internal/rawstore"
@@ -27,6 +28,7 @@ type Server struct {
 	Bus               events.Bus
 	Auth              *auth.Manager
 	Relay             provider.Relay
+	DNSPublisher      dnspub.Publisher
 	Logger            *slog.Logger
 	CloudMode         bool
 	AutoVerifyDomains []string // suffixes for local auto-provisioning (e.g. ".test")
