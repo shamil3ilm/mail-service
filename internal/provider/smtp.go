@@ -37,6 +37,25 @@ type SMTPConfig struct {
 // SMTPRelay is a Relay backed by an upstream SMTP server.
 type SMTPRelay struct {
 	Cfg SMTPConfig
+	// Warmup is optional. When set, recipients that exceed the per-provider
+	// daily cap are moved to Rejected (not Accepted) with a warning logged.
+	// Nil means unlimited.
+	Warmup WarmupGate
+}
+
+// WarmupGate is the small subset of *warmup.Scheduler we depend on. Kept
+// as an interface so provider stays free of the warmup package import.
+type WarmupGate interface {
+	Allow(recipientHost string) WarmupDecision
+}
+
+// WarmupDecision mirrors warmup.Decision so callers don't need to import
+// warmup just to type-assert.
+type WarmupDecision struct {
+	Allowed    bool
+	Provider   string
+	SentToday  int
+	DailyLimit int
 }
 
 // Name returns the provider identifier for logs and metrics.
@@ -109,6 +128,15 @@ func (r *SMTPRelay) Send(ctx context.Context, req *SendRequest) (*SendResult, er
 
 	result := &SendResult{}
 	for _, addr := range recips {
+		// Warmup gate — recipients we'd blast past today's cap for their
+		// provider get rejected before we open RCPT TO. Preserves IP
+		// reputation on a fresh sending IP.
+		if r.Warmup != nil {
+			if d := r.Warmup.Allow(hostOf(addr)); !d.Allowed {
+				result.Rejected = append(result.Rejected, addr)
+				continue
+			}
+		}
 		if err := client.Rcpt(addr); err != nil {
 			// Per-recipient rejection is normal (bad address, over quota) —
 			// keep going for the rest instead of failing the whole batch.
@@ -165,6 +193,17 @@ func dialSMTP(addr, host string, timeout time.Duration, implicitTLS, insecure bo
 		return nil, err
 	}
 	return smtp.NewClient(conn, host)
+}
+
+// hostOf returns the host portion of an email address (case-insensitive
+// callers on the receiving side apply their own normalisation). Empty
+// input or a malformed address returns "".
+func hostOf(addr string) string {
+	i := strings.LastIndexByte(addr, '@')
+	if i < 0 || i == len(addr)-1 {
+		return ""
+	}
+	return addr[i+1:]
 }
 
 func allRecipients(req *SendRequest) []string {

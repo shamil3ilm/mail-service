@@ -17,6 +17,7 @@ import (
 	"github.com/shamil3ilm/mail-service/internal/events"
 	"github.com/shamil3ilm/mail-service/internal/provider"
 	"github.com/shamil3ilm/mail-service/internal/rawstore"
+	"github.com/shamil3ilm/mail-service/internal/smsprovider"
 	"github.com/shamil3ilm/mail-service/internal/storage"
 	"github.com/shamil3ilm/mail-service/web"
 )
@@ -29,6 +30,7 @@ type Server struct {
 	Auth              *auth.Manager
 	Relay             provider.Relay
 	DNSPublisher      dnspub.Publisher
+	SMS               smsprovider.Relay
 	Logger            *slog.Logger
 	CloudMode         bool
 	AutoVerifyDomains []string // suffixes for local auto-provisioning (e.g. ".test")
@@ -136,6 +138,10 @@ func (s *Server) Router() http.Handler {
 				r.Get("/suppressions", s.listSuppressions)
 				r.Post("/suppressions", s.createSuppression)
 				r.Delete("/suppressions/{address}", s.removeSuppression)
+
+				r.Get("/sms", s.listSMS)
+				r.Get("/sms/{id}", s.getSMS)
+				r.Post("/sms", s.sendSMS)
 			}))
 
 			// SSE stream stays outside the timeout so long-lived connections

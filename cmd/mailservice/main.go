@@ -28,7 +28,23 @@ import (
 	"github.com/shamil3ilm/mail-service/internal/selfcheck"
 	mailsmtp "github.com/shamil3ilm/mail-service/internal/smtp"
 	"github.com/shamil3ilm/mail-service/internal/storage/sqlite"
+	"github.com/shamil3ilm/mail-service/internal/smsprovider"
+	"github.com/shamil3ilm/mail-service/internal/warmup"
 )
+
+// warmupGate adapts *warmup.Scheduler to provider.WarmupGate so the
+// provider package stays free of the warmup import.
+type warmupGate struct{ s *warmup.Scheduler }
+
+func (g warmupGate) Allow(host string) provider.WarmupDecision {
+	d := g.s.Allow(host)
+	return provider.WarmupDecision{
+		Allowed:    d.Allowed,
+		Provider:   string(d.Provider),
+		SentToday:  d.SentToday,
+		DailyLimit: d.DailyLimit,
+	}
+}
 
 var version = "dev"
 
@@ -106,6 +122,10 @@ func run() error {
 		slog.String("publisher", publisher.Name()),
 	)
 
+	// SMS provider — capture by default, HTTP when a URL is configured.
+	sms := buildSMSProvider(cfg, store, log)
+	log.Info("sms provider configured", slog.String("provider", sms.Name()))
+
 	// ── HTTP ─────────────────────────────────────────────────────────────
 	srv := &api.Server{
 		Store:             store,
@@ -114,6 +134,7 @@ func run() error {
 		Auth:              authMgr,
 		Relay:             relay,
 		DNSPublisher:      publisher,
+		SMS:               sms,
 		Logger:            log,
 		CloudMode:         cloudMode,
 		AutoVerifyDomains: cfg.AutoVerifyDomains,
@@ -250,6 +271,26 @@ func runSelfChecks(ctx context.Context, cfg *config.Config, store *sqlite.Store,
 	}, log)
 }
 
+// buildSMSProvider picks the SMS backend based on config. Unknown values
+// default to Capture so misconfig doesn't fail-close a subsystem the
+// operator may not care about.
+func buildSMSProvider(cfg *config.Config, store *sqlite.Store, log *slog.Logger) smsprovider.Relay {
+	switch cfg.SMSProvider {
+	case "http":
+		if cfg.SMSProviderURL == "" {
+			log.Warn("sms provider: 'http' selected but URL missing — falling back to capture")
+			return &smsprovider.Capture{Store: store}
+		}
+		return &smsprovider.HTTP{
+			URL:         cfg.SMSProviderURL,
+			BearerToken: cfg.SMSAuthBearer,
+			Store:       store,
+		}
+	default:
+		return &smsprovider.Capture{Store: store}
+	}
+}
+
 // buildPublisher picks the DNS publisher based on config.
 // Empty/unknown values default to Manual so misconfig doesn't fail-close
 // on a subsystem the operator may not care about.
@@ -287,6 +328,9 @@ func buildRelay(
 				User: cfg.RelaySMTP.User,
 				Pass: cfg.RelaySMTP.Pass,
 			},
+			// Warmup gate — outbound sends are capped per recipient
+			// provider so a fresh sending IP ramps volume gracefully.
+			Warmup: warmupGate{s: warmup.New(log)},
 		}
 	default:
 		// none / anything unknown → capture into local storage.

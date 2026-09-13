@@ -271,7 +271,9 @@ func (s *session) Data(r io.Reader) error {
 			RawPath:     rawPath,
 			Size:        size,
 			ReceivedAt:  now,
-			BodyPreview: envelope.Text, // enmime extracted text/plain
+			// BodyPreview includes attachment filenames so FTS matches
+			// "budget.xlsx" queries even when the term isn't in body/subject.
+			BodyPreview: bodyWithAttachmentNames(envelope),
 		}
 		if err := s.deps.Store.InsertMessage(ctx, m); err != nil {
 			s.log().Error("insert", slog.String("err", err.Error()))
@@ -370,6 +372,28 @@ func (s *session) persistAttachments(ctx context.Context, messageID string, env 
 			slog.Int64("size", size),
 			slog.String("mime", a.MimeType))
 	}
+}
+
+// bodyWithAttachmentNames concatenates the plaintext body with every
+// attachment + inline filename, whitespace-separated. Feeding this into
+// FTS lets the search index match on "budget.xlsx" even when neither
+// the body nor subject mentions the file.
+func bodyWithAttachmentNames(env *enmime.Envelope) string {
+	if env == nil {
+		return ""
+	}
+	parts := []string{env.Text}
+	for _, p := range env.Attachments {
+		if p != nil && p.FileName != "" {
+			parts = append(parts, p.FileName)
+		}
+	}
+	for _, p := range env.Inlines {
+		if p != nil && p.FileName != "" {
+			parts = append(parts, p.FileName)
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, " "))
 }
 
 // safeFilename strips control chars and path separators so a hostile MIME

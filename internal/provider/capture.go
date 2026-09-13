@@ -82,15 +82,17 @@ func (c *Capture) Send(ctx context.Context, req *SendRequest) (*SendResult, erro
 		}
 
 		m := &storage.Message{
-			ID:          msgID,
-			MailboxID:   mb.ID,
-			FromAddr:    req.From,
-			ToAddrs:     []string{addr},
-			Subject:     req.Subject,
-			RawPath:     rawPath,
-			Size:        size,
-			ReceivedAt:  now,
-			BodyPreview: req.BodyText,
+			ID:         msgID,
+			MailboxID:  mb.ID,
+			FromAddr:   req.From,
+			ToAddrs:    []string{addr},
+			Subject:    req.Subject,
+			RawPath:    rawPath,
+			Size:       size,
+			ReceivedAt: now,
+			// Attachment filenames go into FTS body so a search for
+			// "invoice.pdf" finds messages that carry it.
+			BodyPreview: bodyWithAttachmentFilenames(req.BodyText, req.Attachments),
 		}
 		if err := c.Store.InsertMessage(ctx, m); err != nil {
 			result.Rejected = append(result.Rejected, addr)
@@ -144,4 +146,23 @@ func newProviderID() string {
 	b := make([]byte, 12)
 	_, _ = rand.Read(b)
 	return "msg_" + hex.EncodeToString(b)
+}
+
+// bodyWithAttachmentFilenames concatenates the caller-supplied body text
+// with each attachment's filename, whitespace-separated. Same rationale
+// as the SMTP inbound helper: attachment filenames become searchable in FTS.
+func bodyWithAttachmentFilenames(body string, atts []Attachment) string {
+	if len(atts) == 0 {
+		return body
+	}
+	parts := make([]string, 0, len(atts)+1)
+	if body != "" {
+		parts = append(parts, body)
+	}
+	for _, a := range atts {
+		if a.Filename != "" {
+			parts = append(parts, a.Filename)
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, " "))
 }

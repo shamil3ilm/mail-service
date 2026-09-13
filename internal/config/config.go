@@ -67,6 +67,15 @@ type Config struct {
 	DNSPublisherURL   string // e.g. http://127.0.0.1:8080
 	DNSPublisherUser  string // login email (when Token is a password)
 	DNSPublisherToken string // JWT | API key | password
+
+	// SMS provider: how outbound texts are dispatched.
+	// "capture" (default): store locally, don't send anywhere.
+	// "http": POST JSON to SMSProviderURL. Works with Android SMS Gateway
+	//   or any HTTP-to-SMS backend.
+	SMSProvider    string
+	SMSProviderURL string
+	SMSAuthBearer  string
+	SMSFromAddr    string // sender identity (SIM number, short code, etc.)
 }
 
 type SMTPRelay struct {
@@ -116,6 +125,11 @@ func Load() (*Config, error) {
 		DNSPublisherURL:   getenv("MAIL_DNS_PUBLISHER_URL", ""),
 		DNSPublisherUser:  getenv("MAIL_DNS_PUBLISHER_USER", "admin@local"),
 		DNSPublisherToken: getenv("MAIL_DNS_PUBLISHER_TOKEN", ""),
+
+		SMSProvider:    getenv("MAIL_SMS_PROVIDER", "capture"),
+		SMSProviderURL: getenv("MAIL_SMS_PROVIDER_URL", ""),
+		SMSAuthBearer:  getenv("MAIL_SMS_AUTH_BEARER", ""),
+		SMSFromAddr:    getenv("MAIL_SMS_FROM", ""),
 	}
 
 	if err := c.validate(); err != nil {

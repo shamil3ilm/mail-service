@@ -245,9 +245,19 @@ function renderThreads() {
   });
 }
 
-// viewMode is "rich" or "plain" — persists across thread opens in-session.
-if (!("viewMode" in state)) state.viewMode = "rich";
+// Mailpit-style view state (persists across thread opens in-session).
+// viewTab: "html" | "source" | "text" | "headers" | "raw"
+// viewport: "mobile" | "tablet" | "desktop"
+if (!("viewTab"    in state)) state.viewTab    = "html";
+if (!("viewport"   in state)) state.viewport   = "desktop";
 if (!("showImages" in state)) state.showImages = false;
+
+function fmtSize(n) {
+  if (n == null) return "";
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+  return (n / 1024 / 1024).toFixed(1) + " MB";
+}
 
 // ── thread detail ─────────────────────────────────────────────────
 async function openThread(id) {
@@ -272,16 +282,24 @@ async function openThread(id) {
     ));
     state.selectedThread.contents = contents;
 
-    // If ANY message has HTML, offer the Rich/Plain toggle.
+    // Size shown in the tab bar (sum across all messages in the thread).
+    const totalSize = contents.reduce((n, c) => n + (c.size || 0), 0);
+    $("#detail-size").textContent = fmtSize(totalSize);
+
+    // If none of the messages have HTML, disable the HTML + Source tabs
+    // and land the user on Text by default.
     const anyHTML = contents.some((c) => c.has_html);
-    const toggleBtn = $("#detail-view-toggle");
-    toggleBtn.classList.toggle("hidden", !anyHTML);
-    toggleBtn.textContent = state.viewMode === "rich" ? "Plain" : "Rich";
+    const htmlTab   = document.querySelector('.tab[data-tab="html"]');
+    const sourceTab = document.querySelector('.tab[data-tab="source"]');
+    htmlTab.disabled   = !anyHTML;
+    sourceTab.disabled = !anyHTML;
+    if (!anyHTML && (state.viewTab === "html" || state.viewTab === "source")) {
+      state.viewTab = "text";
+    }
 
-    // "Show images" only shown in rich view when at least one message
-    // has blocked remote images to unblock.
     updateImagesToggleVisibility();
-
+    applyViewTabActive();
+    applyViewportActive();
     renderThreadIframe();
 
     // Load and render labels attached to this thread.
@@ -300,8 +318,9 @@ async function openThread(id) {
   }
 }
 
-// renderThreadIframe (re-)renders the iframe body from state.selectedThread.
-// Called on open, and again when the user toggles Rich↔Plain / Show images.
+// renderThreadIframe (re-)renders the iframe body from state.selectedThread
+// using the currently-selected tab (state.viewTab). Called on open and
+// whenever the user switches tabs / toggles images / swaps viewport.
 function renderThreadIframe() {
   const t = state.selectedThread;
   if (!t) return;
@@ -314,7 +333,7 @@ function renderThreadIframe() {
       `Date: ${esc(new Date(m.received_at).toLocaleString())}<br>` +
       `Subject: ${esc(m.subject || "(no subject)")}`;
 
-    const bodyHTML = renderMessageBody(c, m.id);
+    const bodyHTML = renderMessageBody(c);
     return (
       '<section class="thread-msg">' +
         '<header>' + heading + '</header>' +
@@ -323,45 +342,67 @@ function renderThreadIframe() {
     );
   }).join("");
 
-  const html =
-    '<!doctype html><html><head><meta charset="utf-8">' +
-    '<style>' +
-      'html,body{margin:0;padding:0;background:#fff;color:#111;font:13px system-ui,Segoe UI,Roboto,sans-serif;}' +
-      '@media (prefers-color-scheme:dark){html,body{background:#14171c;color:#e7ebf0;}' +
-        '.thread-msg{border-color:#232830 !important;}' +
-        '.thread-msg header{background:#0b0d10 !important;}' +
-      '}' +
-      '.thread-msg{margin:12px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;}' +
-      '.thread-msg header{padding:10px 14px;background:#f7f8fa;font-size:12px;line-height:1.5;color:#6b7280;}' +
-      '.thread-msg .body{padding:14px;line-height:1.5;}' +
-      '.thread-msg .body pre{font:12px ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;margin:0;}' +
-      '.thread-msg .body img{max-width:100%;height:auto;}' +
-      '.thread-msg .body table{max-width:100%;}' +
-      '.thread-msg .body blockquote{border-left:3px solid #d1d5db;margin:0 0 0 4px;padding:0 0 0 12px;color:#6b7280;}' +
-    '</style></head><body>' + stacked + '</body></html>';
+  const iframeCSS =
+    'html,body{margin:0;padding:0;background:#fff;color:#111;font:13px system-ui,Segoe UI,Roboto,sans-serif;}' +
+    '@media (prefers-color-scheme:dark){html,body{background:#14171c;color:#e7ebf0;}' +
+      '.thread-msg{border-color:#232830 !important;}' +
+      '.thread-msg header{background:#0b0d10 !important;}' +
+    '}' +
+    '.thread-msg{margin:12px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;}' +
+    '.thread-msg header{padding:10px 14px;background:#f7f8fa;font-size:12px;line-height:1.5;color:#6b7280;}' +
+    '.thread-msg .body{padding:14px;line-height:1.5;}' +
+    '.thread-msg .body pre{font:12px ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;margin:0;}' +
+    '.thread-msg .body img{max-width:100%;height:auto;}' +
+    '.thread-msg .body table{max-width:100%;}' +
+    '.thread-msg .body blockquote{border-left:3px solid #d1d5db;margin:0 0 0 4px;padding:0 0 0 12px;color:#6b7280;}' +
+    'table.headers{border-collapse:collapse;width:100%;font-size:12px;}' +
+    'table.headers td{padding:4px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top;}' +
+    'table.headers td:first-child{font-weight:600;white-space:nowrap;color:#6b7280;}';
 
-  $("#detail-frame").srcdoc = html;
+  $("#detail-frame").srcdoc =
+    '<!doctype html><html><head><meta charset="utf-8"><style>' + iframeCSS + '</style></head>' +
+    '<body>' + stacked + '</body></html>';
 }
 
-// renderMessageBody chooses HTML (when available + rich mode) or plain text.
-// state.showImages controls whether we un-block remote images.
-function renderMessageBody(content, messageID) {
-  const useHTML = state.viewMode === "rich" && content && content.has_html && content.html;
-  if (useHTML) {
-    let html = content.html;
-    if (state.showImages) {
-      // Swap the placeholder + data-blocked-src back to the original URL.
-      // Only affects images we placeholded server-side — no arbitrary
-      // client-side URL rewriting.
-      html = html.replace(
-        /<img\b[^>]*\bdata-blocked-src="([^"]*)"[^>]*>/gi,
-        (_m, src) => `<img src="${src}">`
-      );
+// renderMessageBody picks the view based on state.viewTab:
+//   html    → sanitised HTML (with image un-block honored)
+//   source  → HTML source code as text
+//   text    → text/plain alternative
+//   headers → parsed headers table
+//   raw     → full raw .eml as text
+function renderMessageBody(content) {
+  if (!content) return '<pre></pre>';
+  switch (state.viewTab) {
+    case "source": {
+      const src = content.html_source || content.html || "";
+      return '<pre>' + esc(src) + '</pre>';
     }
-    return html;
+    case "text":
+      return '<pre>' + esc(content.text || "") + '</pre>';
+    case "headers": {
+      const rows = (content.headers || []).map((h) =>
+        `<tr><td>${esc(h.name)}</td><td>${esc(h.value)}</td></tr>`
+      ).join("");
+      return '<table class="headers"><tbody>' + rows + '</tbody></table>';
+    }
+    case "raw":
+      return '<pre>' + esc(content.raw || "") + '</pre>';
+    case "html":
+    default: {
+      if (!content.has_html || !content.html) {
+        // Fall through to text if HTML isn't available in this message.
+        return '<pre>' + esc(content.text || "") + '</pre>';
+      }
+      let html = content.html;
+      if (state.showImages) {
+        html = html.replace(
+          /<img\b[^>]*\bdata-blocked-src="([^"]*)"[^>]*>/gi,
+          (_m, src) => `<img src="${esc(src)}">`
+        );
+      }
+      return html;
+    }
   }
-  const text = content?.text || "";
-  return `<pre>${esc(text)}</pre>`;
 }
 
 function updateImagesToggleVisibility() {
@@ -370,15 +411,42 @@ function updateImagesToggleVisibility() {
     c.has_html && (c.html || "").includes("data-blocked-src")
   );
   const btn = $("#detail-images-toggle");
-  btn.classList.toggle("hidden", !anyBlocked || state.viewMode !== "rich");
+  btn.classList.toggle("hidden", !anyBlocked || state.viewTab !== "html");
   btn.textContent = state.showImages ? "Hide images" : "Show images";
 }
 
-$("#detail-view-toggle").addEventListener("click", () => {
-  state.viewMode = state.viewMode === "rich" ? "plain" : "rich";
-  $("#detail-view-toggle").textContent = state.viewMode === "rich" ? "Plain" : "Rich";
-  updateImagesToggleVisibility();
-  renderThreadIframe();
+function applyViewTabActive() {
+  document.querySelectorAll(".detail-tabs .tab").forEach((el) => {
+    el.classList.toggle("active", el.dataset.tab === state.viewTab);
+  });
+}
+
+function applyViewportActive() {
+  document.querySelectorAll(".viewport-picker .vp").forEach((el) => {
+    el.classList.toggle("active", el.dataset.vp === state.viewport);
+  });
+  const body = document.querySelector(".detail-body");
+  if (body) {
+    body.classList.remove("vp-mobile", "vp-tablet", "vp-desktop");
+    body.classList.add("vp-" + state.viewport);
+  }
+}
+
+document.querySelectorAll(".detail-tabs .tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    if (btn.disabled) return;
+    state.viewTab = btn.dataset.tab;
+    applyViewTabActive();
+    updateImagesToggleVisibility();
+    renderThreadIframe();
+  });
+});
+
+document.querySelectorAll(".viewport-picker .vp").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    state.viewport = btn.dataset.vp;
+    applyViewportActive();
+  });
 });
 
 $("#detail-images-toggle").addEventListener("click", () => {
@@ -1239,6 +1307,127 @@ $("#shortcuts-close").addEventListener("click", () => {
 });
 $("#shortcuts-help").addEventListener("click", (ev) => {
   if (ev.target.id === "shortcuts-help") ev.target.classList.add("hidden");
+});
+
+// ── channel switcher (Mail / SMS) ─────────────────────────────────
+if (!("channel"    in state)) state.channel    = "mail";
+if (!("smsFilter"  in state)) state.smsFilter  = ""; // "" | "outbound" | "inbound"
+if (!("smsList"    in state)) state.smsList    = [];
+
+document.querySelectorAll(".channel-switch .ch-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    state.channel = btn.dataset.channel;
+    document.querySelectorAll(".channel-switch .ch-btn").forEach((b) =>
+      b.classList.toggle("active", b === btn));
+    $("#channel-mail").classList.toggle("hidden", state.channel !== "mail");
+    $("#channel-sms").classList.toggle("hidden", state.channel !== "sms");
+    // Swap the inbox pane contents based on channel.
+    if (state.channel === "sms") {
+      $("#inbox-title").textContent = "SMS";
+      refreshSMS();
+    } else {
+      $("#inbox-title").textContent = "All mail";
+      refreshThreads();
+    }
+  });
+});
+
+document.querySelectorAll("[data-sms-filter]").forEach((li) => {
+  li.addEventListener("click", () => {
+    state.smsFilter = li.dataset.smsFilter;
+    document.querySelectorAll("[data-sms-filter]").forEach((el) =>
+      el.classList.toggle("active", el === li));
+    refreshSMS();
+  });
+});
+
+async function refreshSMS() {
+  const qs = state.smsFilter ? `?direction=${state.smsFilter}` : "";
+  try {
+    const r = await api("/sms" + qs);
+    state.smsList = r.sms || [];
+    renderSMSList();
+  } catch (err) {
+    console.error("refreshSMS", err);
+  }
+}
+
+function renderSMSList() {
+  const ul = $("#message-list");
+  const empty = $("#inbox-empty");
+  if (!state.smsList.length) {
+    ul.innerHTML = "";
+    empty.classList.remove("hidden");
+    empty.textContent = "No SMS yet.";
+    return;
+  }
+  empty.classList.add("hidden");
+  ul.className = "sms-list";
+  ul.innerHTML = state.smsList.map((m) => {
+    const isOut = m.direction === "outbound";
+    const icon  = isOut ? "→" : "←";
+    const badge = m.status
+      ? `<span class="status-badge ${esc(m.status)}">${esc(m.status)}</span>`
+      : "";
+    return `
+      <li data-id="${esc(m.id)}">
+        <span class="dir-icon">${icon}</span>
+        <div class="body-preview">
+          <span class="to">${esc(isOut ? m.to : m.from)}</span>
+          ${badge}
+          <br>
+          <span class="muted">${esc(m.body || "")}</span>
+        </div>
+        <div class="meta">
+          ${esc(fmtDate(m.created_at))}<br>
+          <span class="muted">${m.segments} seg</span>
+        </div>
+      </li>
+    `;
+  }).join("");
+}
+
+// SMS compose
+const smsComposeEl = $("#sms-compose");
+const smsForm      = $("#sms-compose-form");
+const smsError     = $("#sms-compose-error");
+const smsStatus    = $("#sms-compose-status");
+const smsSendBtn   = $("#sms-compose-send");
+
+$("#new-sms-btn").addEventListener("click", () => {
+  smsForm.reset();
+  smsError.classList.add("hidden");
+  smsStatus.textContent = "";
+  smsComposeEl.classList.remove("hidden");
+  smsForm.to.focus();
+});
+$("#sms-compose-close").addEventListener("click", () => smsComposeEl.classList.add("hidden"));
+smsComposeEl.addEventListener("click", (ev) => {
+  if (ev.target === smsComposeEl) smsComposeEl.classList.add("hidden");
+});
+
+smsForm.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  smsError.classList.add("hidden");
+  smsSendBtn.disabled = true;
+  smsStatus.textContent = "Sending…";
+  try {
+    const payload = {
+      from: smsForm.from.value.trim(),
+      to:   smsForm.to.value.trim(),
+      body: smsForm.body.value,
+    };
+    const resp = await api("/sms", { method: "POST", body: JSON.stringify(payload) });
+    smsStatus.textContent = `Sent ✓ (${resp.segments || 1} seg, status: ${resp.status || "sent"})`;
+    setTimeout(() => smsComposeEl.classList.add("hidden"), 800);
+    await refreshSMS();
+  } catch (err) {
+    smsError.textContent = String(err.message || err).replace(/^\d+:\s*/, "");
+    smsError.classList.remove("hidden");
+    smsStatus.textContent = "";
+  } finally {
+    smsSendBtn.disabled = false;
+  }
 });
 
 // ── go ─────────────────────────────────────────────────────────────
