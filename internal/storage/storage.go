@@ -118,6 +118,27 @@ type Domain struct {
 	CreatedAt       time.Time
 }
 
+// SMSMessage is one text — sent or received. Parallel to Message but
+// intentionally standalone: SMS has different failure modes (network
+// timeouts, carrier rejects, segment counts), and the metadata doesn't
+// justify shoe-horning it into the mail primitive.
+type SMSMessage struct {
+	ID          string
+	Direction   string // "outbound" | "inbound"
+	Provider    string // "capture" | "http" | "twilio"
+	ProviderID  string
+	FromAddr    string
+	ToAddr      string
+	Body        string
+	Status      string // "queued" | "sending" | "sent" | "delivered" | "failed" | "received"
+	Error       string
+	Segments    int
+	UserID      string
+	CreatedAt   time.Time
+	SentAt      *time.Time
+	DeliveredAt *time.Time
+}
+
 // Label is a Gmail-style tag applied per message and displayed per thread.
 type Label struct {
 	ID        string
@@ -223,6 +244,12 @@ type Store interface {
 	IsSuppressed(ctx context.Context, address string) (bool, error)
 	ListSuppressions(ctx context.Context, limit, offset int) ([]*Suppression, error)
 	RemoveSuppression(ctx context.Context, address string) error
+
+	// SMS
+	InsertSMS(ctx context.Context, m *SMSMessage) error
+	GetSMS(ctx context.Context, id string) (*SMSMessage, error)
+	ListSMS(ctx context.Context, direction string, limit, offset int) ([]*SMSMessage, error)
+	UpdateSMSStatus(ctx context.Context, id, status, providerID, errMsg string, sentAt, deliveredAt *time.Time) error
 
 	// Labels
 	InsertLabel(ctx context.Context, l *Label) error

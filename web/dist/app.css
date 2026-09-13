@@ -229,8 +229,86 @@ kbd {
 .detail-header h2 { font-size: 16px; }
 .detail-meta { display: flex; flex-direction: column; gap: 2px; color: var(--muted); font-size: 12px; }
 .detail-actions { margin-top: 12px; display: flex; gap: 8px; }
-.detail-body { flex: 1; padding: 0; }
-.detail-body iframe { width: 100%; height: 100%; border: 0; background: white; }
+.detail-body { flex: 1; padding: 0; background: var(--bg); display: flex; justify-content: center; align-items: stretch; }
+.detail-body iframe { width: 100%; height: 100%; border: 0; background: white; transition: max-width .15s ease; }
+
+/* Mailpit-style tab bar under the detail header. */
+.detail-tabbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 14px; border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  min-height: 40px;
+}
+.detail-tabs { display: flex; gap: 2px; flex: 1; overflow-x: auto; }
+.detail-tabs .tab {
+  padding: 8px 14px; border: 0; background: transparent;
+  color: var(--muted); cursor: pointer;
+  border-bottom: 2px solid transparent;
+  font: inherit; font-size: 13px;
+  white-space: nowrap;
+}
+.detail-tabs .tab:hover { color: var(--text); }
+.detail-tabs .tab.active {
+  color: var(--text); border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.viewport-picker { display: flex; gap: 2px; }
+.viewport-picker .vp {
+  padding: 4px 8px; border: 1px solid var(--border);
+  background: transparent; cursor: pointer; border-radius: 4px;
+  font-size: 14px; color: var(--muted);
+}
+.viewport-picker .vp:hover { background: var(--bg); color: var(--text); }
+.viewport-picker .vp.active {
+  background: var(--accent); color: var(--accent-fg); border-color: var(--accent);
+}
+#detail-size { flex-shrink: 0; }
+
+/* Viewport size classes applied to the iframe via JS. */
+.detail-body.vp-mobile iframe  { max-width: 375px; }
+.detail-body.vp-tablet iframe  { max-width: 768px; }
+.detail-body.vp-desktop iframe { max-width: none; }
+
+/* Channel switcher — Mail / SMS tabs at the top of the sidebar. */
+.channel-switch {
+  display: flex; padding: 8px; gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.channel-switch .ch-btn {
+  flex: 1; padding: 6px 10px;
+  border: 1px solid transparent; background: transparent;
+  color: var(--muted); cursor: pointer; border-radius: 6px;
+  font: inherit; font-size: 13px; font-weight: 600;
+}
+.channel-switch .ch-btn:hover { color: var(--text); background: var(--bg); }
+.channel-switch .ch-btn.active {
+  background: var(--accent); color: var(--accent-fg);
+}
+
+.sms-list { list-style: none; margin: 0; padding: 0; }
+.sms-list li {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  cursor: pointer; display: flex; gap: 10px; align-items: flex-start;
+}
+.sms-list li:hover { background: var(--bg); }
+.sms-list li .dir-icon {
+  flex-shrink: 0; font-size: 14px;
+}
+.sms-list li .body-preview {
+  flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sms-list li .meta {
+  font-size: 11px; color: var(--muted); flex-shrink: 0; text-align: right;
+}
+.sms-list li .to { font-weight: 600; }
+.sms-list li .status-badge {
+  font-size: 10px; padding: 1px 6px; border-radius: 8px;
+  background: var(--bg); color: var(--muted); margin-left: 4px;
+}
+.sms-list li .status-badge.sent      { color: var(--live); }
+.sms-list li .status-badge.delivered { color: var(--live); background: rgba(16,185,129,.15); }
+.sms-list li .status-badge.failed    { color: var(--danger); background: rgba(220,38,38,.10); }
+.sms-list li .status-badge.queued    { color: var(--muted); }
 
 .mobile-only { display: none; }
 

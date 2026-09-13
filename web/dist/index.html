@@ -46,14 +46,33 @@
 
   <div class="layout">
     <aside id="sidebar" class="sidebar">
-      <div class="sidebar-header">Mailboxes</div>
-      <ul id="mailbox-list" class="mailbox-list"></ul>
+      <nav class="channel-switch" role="tablist">
+        <button class="ch-btn active" data-channel="mail" role="tab">✉ Mail</button>
+        <button class="ch-btn"        data-channel="sms"  role="tab">💬 SMS</button>
+      </nav>
 
-      <div class="sidebar-header">
-        <span>Labels</span>
-        <button id="new-label-btn" class="ghost-btn tiny" title="Create label">+</button>
+      <div id="channel-mail">
+        <div class="sidebar-header">Mailboxes</div>
+        <ul id="mailbox-list" class="mailbox-list"></ul>
+
+        <div class="sidebar-header">
+          <span>Labels</span>
+          <button id="new-label-btn" class="ghost-btn tiny" title="Create label">+</button>
+        </div>
+        <ul id="label-list" class="mailbox-list"></ul>
       </div>
-      <ul id="label-list" class="mailbox-list"></ul>
+
+      <div id="channel-sms" class="hidden">
+        <div class="sidebar-header">
+          <span>SMS</span>
+          <button id="new-sms-btn" class="ghost-btn tiny" title="Compose SMS">+</button>
+        </div>
+        <ul class="mailbox-list">
+          <li data-sms-filter=""         class="active"><span>All</span></li>
+          <li data-sms-filter="outbound"><span>Sent</span></li>
+          <li data-sms-filter="inbound"><span>Received</span></li>
+        </ul>
+      </div>
     </aside>
 
     <main class="main">
@@ -83,7 +102,6 @@
             <button id="detail-reply" class="ghost-btn">↩ Reply</button>
             <button id="detail-reply-all" class="ghost-btn">↩↩ Reply all</button>
             <button id="detail-forward" class="ghost-btn">→ Forward</button>
-            <button id="detail-view-toggle" class="ghost-btn" title="Toggle rich/plain">Plain</button>
             <button id="detail-images-toggle" class="ghost-btn hidden" title="Load blocked images">Show images</button>
             <div id="detail-labels" class="detail-labels"></div>
             <button id="detail-label-btn" class="ghost-btn" title="Add label">🏷</button>
@@ -92,6 +110,21 @@
           </div>
         </header>
         <div id="thread-attach-strip" class="detail-attachments"></div>
+        <div class="detail-tabbar">
+          <div class="detail-tabs" role="tablist">
+            <button class="tab active" data-tab="html"    role="tab">HTML</button>
+            <button class="tab"        data-tab="source"  role="tab">HTML Source</button>
+            <button class="tab"        data-tab="text"    role="tab">Text</button>
+            <button class="tab"        data-tab="headers" role="tab">Headers</button>
+            <button class="tab"        data-tab="raw"     role="tab">Raw</button>
+          </div>
+          <div class="viewport-picker" title="Viewport preview">
+            <button class="vp"          data-vp="mobile"  title="Mobile (375px)">📱</button>
+            <button class="vp"          data-vp="tablet"  title="Tablet (768px)">💻</button>
+            <button class="vp active"   data-vp="desktop" title="Desktop (full)">🖥</button>
+          </div>
+          <span id="detail-size" class="muted small"></span>
+        </div>
         <section class="detail-body">
           <iframe id="detail-frame" title="Message body" sandbox=""></iframe>
         </section>
@@ -212,6 +245,30 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- ── SMS COMPOSE MODAL ─────────────────────────────────────────── -->
+<div id="sms-compose" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="sms-compose-title">
+  <form id="sms-compose-form" class="modal-card">
+    <div class="modal-header">
+      <h2 id="sms-compose-title">New SMS</h2>
+      <button type="button" id="sms-compose-close" class="icon-btn" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <label>From <input name="from" type="text" placeholder="+15551234567 or short code"></label>
+      <label>To   <input name="to"   type="text" required placeholder="+15551234567"></label>
+      <label>Message
+        <textarea name="body" rows="6" required maxlength="1600"
+                  placeholder="Up to 160 chars per segment; multi-segment auto-concatenated"></textarea>
+      </label>
+      <p id="sms-compose-error" class="error hidden"></p>
+      <p id="sms-compose-status" class="muted small"></p>
+    </div>
+    <div class="modal-footer">
+      <span class="spacer"></span>
+      <button type="submit" id="sms-compose-send">Send</button>
+    </div>
+  </form>
 </div>
 
 <!-- ── COMPOSE MODAL ────────────────────────────────────────────── -->
