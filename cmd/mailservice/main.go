@@ -22,13 +22,15 @@ import (
 	"github.com/shamil3ilm/mail-service/internal/dnspub"
 	"github.com/shamil3ilm/mail-service/internal/events"
 	"github.com/shamil3ilm/mail-service/internal/logger"
+	"github.com/shamil3ilm/mail-service/internal/metrics"
 	"github.com/shamil3ilm/mail-service/internal/provider"
 	"github.com/shamil3ilm/mail-service/internal/rawstore"
 	"github.com/shamil3ilm/mail-service/internal/router"
 	"github.com/shamil3ilm/mail-service/internal/selfcheck"
 	mailsmtp "github.com/shamil3ilm/mail-service/internal/smtp"
-	"github.com/shamil3ilm/mail-service/internal/storage/sqlite"
+	"github.com/shamil3ilm/mail-service/internal/retention"
 	"github.com/shamil3ilm/mail-service/internal/smsprovider"
+	"github.com/shamil3ilm/mail-service/internal/storage/sqlite"
 	"github.com/shamil3ilm/mail-service/internal/warmup"
 )
 
@@ -114,6 +116,13 @@ func run() error {
 		go runSelfChecks(ctx, cfg, store, log)
 	}
 
+	// Retention runner — auto-deletes messages older than
+	// MAIL_RETENTION_DAYS. Runs no-op if the horizon is 0 (unlimited).
+	go retention.New(retention.Config{
+		GlobalDays: cfg.RetentionDays,
+		Interval:   cfg.RetentionInterval,
+	}, store, raw, log).Run(ctx)
+
 	// DNS publisher — auto-publish generated records into an authoritative
 	// DNS backend when configured. Defaults to manual (no-op) so existing
 	// deployments are unchanged.
@@ -147,9 +156,12 @@ func run() error {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
+	metricsReg := metrics.New()
+	registerBaselineMetrics(metricsReg, store)
+
 	admin := &http.Server{
 		Addr:              net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.AdminPort)),
-		Handler:           api.AdminRouter(),
+		Handler:           api.AdminRouter(metricsReg),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -269,6 +281,51 @@ func runSelfChecks(ctx context.Context, cfg *config.Config, store *sqlite.Store,
 		DKIMSelectors: []string{"ms1"},
 		DNSBLZones:    cfg.CloudDNSBLZones,
 	}, log)
+}
+
+// registerBaselineMetrics pre-registers every counter + gauge we care
+// about so /metrics has a stable schema even before traffic. Storage
+// gauges are refreshed on a slow tick so a scrape reflects reality
+// without instrumenting every write path.
+func registerBaselineMetrics(reg *metrics.Registry, store *sqlite.Store) {
+	// Counters — subsystems Add() into these as they observe events.
+	reg.NewCounter("mailservice_messages_received_total",
+		"Messages accepted via SMTP inbound.")
+	reg.NewCounter("mailservice_messages_sent_total",
+		"Messages accepted by POST /api/v1/emails.")
+	reg.NewCounter("mailservice_sms_sent_total",
+		"SMS accepted by POST /api/v1/sms.")
+	reg.NewCounter("mailservice_dkim_signed_total",
+		"Outbound messages that received a DKIM signature.")
+	reg.NewCounter("mailservice_http_requests_total",
+		"HTTP requests by status code class.")
+
+	// Gauges — background refresher.
+	mbxGauge := reg.NewGauge("mailservice_mailboxes_total",
+		"Current number of mailboxes.")
+	msgGauge := reg.NewGauge("mailservice_messages_total",
+		"Current number of stored messages.")
+
+	go func() {
+		ctx := context.Background()
+		refresh := func() {
+			if mbs, err := store.ListMailboxes(ctx); err == nil {
+				mbxGauge.Set(float64(len(mbs)))
+			}
+			// Approximate: count-all via ListMessages("", huge limit) is
+			// expensive; we use a bounded sample count of first page +
+			// leave a proper COUNT(*) query for later.
+			if msgs, err := store.ListMessages(ctx, "", 500, 0); err == nil {
+				msgGauge.Set(float64(len(msgs)))
+			}
+		}
+		refresh()
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			refresh()
+		}
+	}()
 }
 
 // buildSMSProvider picks the SMS backend based on config. Unknown values
