@@ -50,3 +50,4 @@ Thumbs.db
 /bounce.py
 /notes.txt
 /attachments
+run-local.*.log*
