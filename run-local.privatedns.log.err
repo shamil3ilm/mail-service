@@ -1,0 +1,6 @@
+time=2026-09-13T14:58:01.479+05:30 level=INFO msg=bootstrap.root_zone_created zone=mail.local
+time=2026-09-13T14:58:01.481+05:30 level=INFO msg=dns.listen net=udp addr=127.0.0.1:5353
+time=2026-09-13T14:58:01.481+05:30 level=INFO msg=dns.listen net=tcp addr=127.0.0.1:5353
+time=2026-09-13T14:58:01.481+05:30 level=INFO msg=http.listen addr=127.0.0.1:8080 url=http://127.0.0.1:8080/
+time=2026-09-13T14:58:01.485+05:30 level=ERROR msg="dns server" err="listen udp 127.0.0.1:5353: bind: An attempt was made to access a socket in a way forbidden by its access permissions."
+time=2026-09-13T14:58:01.486+05:30 level=INFO msg=dns.exit err="listen udp 127.0.0.1:5353: bind: An attempt was made to access a socket in a way forbidden by its access permissions."

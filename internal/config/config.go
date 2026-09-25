@@ -76,6 +76,11 @@ type Config struct {
 	SMSProviderURL string
 	SMSAuthBearer  string
 	SMSFromAddr    string // sender identity (SIM number, short code, etc.)
+
+	// Retention: messages older than RetentionDays get deleted on the
+	// configured cadence. 0 disables retention (keep forever).
+	RetentionDays     int
+	RetentionInterval time.Duration
 }
 
 type SMTPRelay struct {
@@ -130,6 +135,9 @@ func Load() (*Config, error) {
 		SMSProviderURL: getenv("MAIL_SMS_PROVIDER_URL", ""),
 		SMSAuthBearer:  getenv("MAIL_SMS_AUTH_BEARER", ""),
 		SMSFromAddr:    getenv("MAIL_SMS_FROM", ""),
+
+		RetentionDays:     getenvInt("MAIL_RETENTION_DAYS", 0),
+		RetentionInterval: getenvDuration("MAIL_RETENTION_INTERVAL", 6*time.Hour),
 	}
 
 	if err := c.validate(); err != nil {
