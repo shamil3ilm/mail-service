@@ -10,17 +10,22 @@ API — from local dev on Laragon to your own MX in production.
 
 ## Status
 
-Day 1 scaffold. Runnable with structured logging, health/ready probes, pprof
-admin port, SQLite + FTS5 storage with migrations, and adapter interfaces for
-storage and outbound providers.
+Runs end to end as one binary. Started by `cmd/mailservice` today:
 
-Runtime surface today:
-- `GET /healthz` — liveness (200 while the process is up)
-- `GET /readyz`  — readiness (200 only when storage is reachable + migrated)
-- `GET /debug/pprof/*` on the admin port (loopback only)
-- `GET /api/v1/messages`, `GET /api/v1/mailboxes` — stubs (501)
+- SMTP capture on the inbound port, plus a submission port
+- HTTP API and an embedded web dashboard (Mailpit-style tabs) with full-text
+  search over messages and attachment names (SQLite FTS5)
+- Outbound relay through a swappable provider (`capture` or `smtp`), with a
+  per-host warm-up scheduler
+- Accounts with a bootstrapped admin
+- Retention (auto-delete after `MAIL_RETENTION_DAYS`), `/metrics` on the
+  admin port, and startup self-checks
+- SMS capture, or an HTTP SMS provider when one is configured
+- Optional DNS record publishing to privatedns
+- Backup and restore scripts in `scripts/`
 
-SMTP listener, dashboard SPA, and message routing land in the next phases.
+Built but not yet wired in: the DKIM signer in `internal/dkim` (RSA-SHA256,
+RFC 6376, tested) is not yet applied to outbound mail.
 
 ## Prerequisites
 
